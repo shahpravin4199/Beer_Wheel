@@ -1,2 +1,2 @@
 # Beer_Wheel
-Spin wheel to select bee buyer.
+Spin wheel to select beer buyer.
