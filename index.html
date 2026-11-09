@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beer Wheel – who buys the round?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bottle: #10352A;
+    --bottle-deep: #0A241C;
+    --amber: #E8A317;
+    --foam: #F7F3E8;
+    --hop: #8DB255;
+    --stout: #2A170C;
+    --line: rgba(247, 243, 232, 0.22);
+    --font: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--bottle);
+    color: var(--foam);
+    font-family: var(--font);
+    font-weight: 500;
+    display: flex;
+    justify-content: center;
+    padding: 28px 16px 48px;
+  }
+  main {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+  }
+  h1 {
+    margin: 0;
+    font-weight: 800;
+    font-size: clamp(2rem, 9vw, 2.8rem);
+    line-height: 1.05;
+    text-align: center;
+    letter-spacing: -0.02em;
+  }
+  .sub {
+    margin: -12px 0 0;
+    text-align: center;
+    color: rgba(247, 243, 232, 0.75);
+  }
+
+  /* Wheel */
+  .stage {
+    position: relative;
+    width: min(92vw, 440px);
+    aspect-ratio: 1;
+  }
+  canvas { width: 100%; height: 100%; display: block; }
+  .pointer {
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    width: 34px;
+    height: 40px;
+    transform: translateX(-50%);
+    z-index: 2;
+    filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.35));
+  }
+
+  /* Result */
+  .result {
+    min-height: 3.2rem;
+    text-align: center;
+    font-weight: 800;
+    font-size: clamp(1.4rem, 6vw, 1.9rem);
+    line-height: 1.2;
+    color: var(--amber);
+  }
+  .result.idle { color: rgba(247, 243, 232, 0.6); font-weight: 500; font-size: 1.05rem; }
+
+  /* Controls */
+  button, input { font: inherit; }
+  .spin {
+    appearance: none;
+    border: 0;
+    cursor: pointer;
+    background: var(--amber);
+    color: var(--stout);
+    font-weight: 800;
+    font-size: 1.25rem;
+    padding: 14px 44px;
+    border-radius: 999px;
+    box-shadow: 0 5px 0 #A66F00;
+    transition: transform 0.08s, box-shadow 0.08s;
+  }
+  .spin:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 1px 0 #A66F00; }
+  .spin:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .panel {
+    width: 100%;
+    border-top: 1px solid var(--line);
+    padding-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .add { display: flex; gap: 8px; }
+  .add input {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--bottle-deep);
+    color: var(--foam);
+  }
+  .add input::placeholder { color: rgba(247, 243, 232, 0.45); }
+  .add button {
+    appearance: none;
+    cursor: pointer;
+    border: 1px solid var(--hop);
+    background: transparent;
+    color: var(--hop);
+    font-weight: 800;
+    padding: 0 18px;
+    border-radius: 10px;
+  }
+  .add button:hover { background: var(--hop); color: var(--bottle-deep); }
+
+  .names { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .names li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 6px 6px 14px;
+    background: var(--bottle-deep);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+  }
+  .names button {
+    appearance: none;
+    cursor: pointer;
+    border: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(247, 243, 232, 0.12);
+    color: var(--foam);
+    line-height: 1;
+  }
+  .names button:hover { background: #C4452B; }
+  .hint { margin: 0; font-size: 0.9rem; color: rgba(247, 243, 232, 0.6); }
+  .clear {
+    align-self: flex-start;
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    color: rgba(247, 243, 232, 0.6);
+    text-decoration: underline;
+  }
+
+  :focus-visible { outline: 3px solid var(--foam); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Beer Wheel</h1>
+  <p class="sub">Add everyone's name. Spin. The wheel picks who pays.</p>
+
+  <div class="stage">
+    <svg class="pointer" viewBox="0 0 34 40" aria-hidden="true">
+      <path d="M17 40 L2 8 Q17 -6 32 8 Z" fill="#F7F3E8" stroke="#2A170C" stroke-width="3" stroke-linejoin="round"/>
+    </svg>
+    <canvas id="wheel" role="img" aria-label="Spinning wheel with the names you added"></canvas>
+  </div>
+
+  <div id="result" class="result idle" aria-live="polite">Add at least 2 names to start.</div>
+
+  <button id="spin" class="spin" type="button" disabled>Spin</button>
+
+  <section class="panel" aria-label="Names">
+    <div class="add">
+      <input id="nameInput" type="text" maxlength="24" placeholder="Type a name" autocomplete="off" aria-label="Name to add">
+      <button id="addBtn" type="button">Add</button>
+    </div>
+    <ul id="names" class="names"></ul>
+    <p class="hint" id="hint"></p>
+    <button id="clearBtn" class="clear" type="button" hidden>Clear all names</button>
+  </section>
+</main>
+
+<script>
+(function () {
+  var COLORS = [
+    { bg: "#E8A317", ink: "#2A170C" },
+    { bg: "#F7F3E8", ink: "#2A170C" },
+    { bg: "#8DB255", ink: "#0A241C" },
+    { bg: "#C4691A", ink: "#F7F3E8" },
+    { bg: "#2A170C", ink: "#F7F3E8" },
+    { bg: "#F2C14E", ink: "#2A170C" }
+  ];
+  var MAX_NAMES = 24;
+  var STORE_KEY = "beer-wheel-names";
+
+  var canvas = document.getElementById("wheel");
+  var ctx = canvas.getContext("2d");
+  var spinBtn = document.getElementById("spin");
+  var resultEl = document.getElementById("result");
+  var input = document.getElementById("nameInput");
+  var addBtn = document.getElementById("addBtn");
+  var listEl = document.getElementById("names");
+  var hintEl = document.getElementById("hint");
+  var clearBtn = document.getElementById("clearBtn");
+
+  var names = load();
+  var rotation = 0;       // radians, current wheel rotation
+  var spinning = false;
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.slice(0, MAX_NAMES) : [];
+    } catch (e) { return []; }
+  }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(names)); } catch (e) {}
+  }
+
+  function colorFor(i, n) {
+    var idx = i % COLORS.length;
+    if (i === n - 1 && n > 1 && idx === 0) idx = 2; // avoid last slice matching the first
+    return COLORS[idx];
+  }
+
+  function draw() {
+    var size = canvas.clientWidth;
+    var dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.round(size * dpr)) {
+      canvas.width = Math.round(size * dpr);
+      canvas.height = Math.round(size * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+
+    var cx = size / 2, cy = size / 2, r = size / 2 - 8;
+    var n = names.length;
+
+    // outer rim
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#0A241C";
+    ctx.fill();
+
+    if (n === 0) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = "#18483A";
+      ctx.fill();
+      ctx.fillStyle = "rgba(247,243,232,0.7)";
+      ctx.font = "500 " + Math.round(size * 0.05) + "px " + getComputedStyle(document.body).fontFamily;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Your names go here", cx, cy);
+      return;
+    }
+
+    var seg = (Math.PI * 2) / n;
+    var fontSize = Math.max(12, Math.min(26, Math.round(size * 0.065 - n * 0.6)));
+    ctx.font = "800 " + fontSize + "px " + getComputedStyle(document.body).fontFamily;
+
+    for (var i = 0; i < n; i++) {
+      var a0 = rotation + i * seg;
+      var c = colorFor(i, n);
+
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, a0, a0 + seg);
+      ctx.closePath();
+      ctx.fillStyle = c.bg;
+      ctx.fill();
+      ctx.strokeStyle = "#0A241C";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // label
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(a0 + seg / 2);
+      ctx.fillStyle = c.ink;
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      var maxW = r * 0.62;
+      var label = names[i];
+      while (label.length > 1 && ctx.measureText(label).width > maxW) {
+        label = label.slice(0, -1);
+      }
+      if (label !== names[i]) label = label.slice(0, -1) + "…";
+      ctx.fillText(label, r - 16, 0);
+      ctx.restore();
+    }
+
+    // hub
+    ctx.beginPath();
+    ctx.arc(cx, cy, size * 0.06, 0, Math.PI * 2);
+    ctx.fillStyle = "#0A241C";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy, size * 0.035, 0, Math.PI * 2);
+    ctx.fillStyle = "#E8A317";
+    ctx.fill();
+  }
+
+  function renderList() {
+    listEl.innerHTML = "";
+    names.forEach(function (name, i) {
+      var li = document.createElement("li");
+      var span = document.createElement("span");
+      span.textContent = name;
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "×";
+      btn.setAttribute("aria-label", "Remove " + name);
+      btn.addEventListener("click", function () { removeName(i); });
+      li.appendChild(span);
+      li.appendChild(btn);
+      listEl.appendChild(li);
+    });
+
+    var n = names.length;
+    spinBtn.disabled = spinning || n < 2;
+    clearBtn.hidden = n === 0;
+    if (n >= MAX_NAMES) hintEl.textContent = "That's the maximum of " + MAX_NAMES + " names.";
+    else if (n < 2) hintEl.textContent = "Add " + (2 - n) + " more to enable the spin.";
+    else hintEl.textContent = n + " names on the wheel.";
+  }
+
+  function refresh() {
+    renderList();
+    draw();
+    save();
+  }
+
+  function setIdle(msg) {
+    resultEl.className = "result idle";
+    resultEl.textContent = msg;
+  }
+
+  function addName() {
+    if (spinning) return;
+    var v = input.value.replace(/\s+/g, " ").trim();
+    if (!v) return;
+    if (names.length >= MAX_NAMES) return;
+    var dup = names.some(function (x) { return x.toLowerCase() === v.toLowerCase(); });
+    if (dup) { input.select(); return; }
+    names.push(v);
+    input.value = "";
+    input.focus();
+    if (names.length >= 2) setIdle("Ready. Hit Spin."); else setIdle("Add at least 2 names to start.");
+    refresh();
+  }
+
+  function removeName(i) {
+    if (spinning) return;
+    names.splice(i, 1);
+    setIdle(names.length >= 2 ? "Ready. Hit Spin." : "Add at least 2 names to start.");
+    refresh();
+  }
+
+  function spin() {
+    if (spinning || names.length < 2) return;
+    spinning = true;
+    spinBtn.disabled = true;
+    setIdle("Spinning…");
+
+    var n = names.length;
+    var seg = (Math.PI * 2) / n;
+    var winner = Math.floor(Math.random() * n);
+    var jitter = (Math.random() - 0.5) * 0.7;          // land anywhere inside the slice, not dead centre
+    var pointerAngle = -Math.PI / 2;                   // pointer is at the top
+    var target = pointerAngle - (winner + 0.5 + jitter) * seg;
+    var twoPi = Math.PI * 2;
+    var delta = (((target - rotation) % twoPi) + twoPi) % twoPi;
+
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var turns = reduce ? 1 : 5 + Math.floor(Math.random() * 3);
+    var duration = reduce ? 800 : 4500 + Math.random() * 1500;
+
+    var start = rotation;
+    var total = delta + turns * twoPi;
+    var t0 = performance.now();
+
+    function frame(now) {
+      var t = Math.min(1, (now - t0) / duration);
+      var eased = 1 - Math.pow(1 - t, 4);              // fast start, slow settle
+      rotation = start + total * eased;
+      draw();
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        rotation = rotation % twoPi;
+        spinning = false;
+        resultEl.className = "result";
+        resultEl.textContent = "🍺 " + names[winner] + " buys the beer!";
+        renderList();
+        draw();
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  addBtn.addEventListener("click", addName);
+  input.addEventListener("keydown", function (e) { if (e.key === "Enter") addName(); });
+  spinBtn.addEventListener("click", spin);
+  clearBtn.addEventListener("click", function () {
+    if (spinning) return;
+    names = [];
+    setIdle("Add at least 2 names to start.");
+    refresh();
+  });
+  window.addEventListener("resize", draw);
+
+  if (names.length >= 2) setIdle("Ready. Hit Spin.");
+  refresh();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+})();
+</script>
+</body>
+</html>
